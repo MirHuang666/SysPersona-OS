@@ -1,5 +1,37 @@
 # 变更记录
 
+## v6.5.0 · 换壳：从「寄生社区版」改成「接官方壳 + 接管接口」（2026-11-13）
+
+人：「我一开始，就想找一个这样的」「社区版阉割了请求」「把我们的变成内核，然后覆盖他的」。
+
+**一句话**：壳换成官方 Hermes Agent，派发与压缩改为走它的 JSON-RPC/WS 网关；社区版那条路正式废弃，因为它把接口砍了。
+
+- **为什么弃社区版**：社区版只剩一个能点的界面，没有任何可调用的请求入口，外部程序接不进去；
+  官方版自带完整网关，`session.context_breakdown` / `session.history` / `session.compress` /
+  `session.active_list` / `prompt.submit` 全部可用——这是"能不能接外部程序"的分水岭，不是体验差异；
+- **装不上的三个真因**（历次失败都卡在这）：① `HERMES_HOME` 被写死在 `start-here.cmd`、安装目标只认
+  `%LOCALAPPDATA%`，装 D 盘静默失败；② 依赖要联网取 Python/uv/node，国内下载卡死；③ 更新渠道默认
+  「每个提交（main）」，等于天天跑测试版。解法分别是 `offline-install.ps1 -HermesHome`、
+  全离线 wheels + `UV_PYTHON_INSTALL_MIRROR`（39 KB/s → 6.44 s）、切「稳定版发布」；
+- **派发**：`hermes -z "<prompt>"` 单发 15.5 s、`--continue` 续接 12.0 s，纯文本返回；
+  脚本从 `HKCU\Environment` 自补 key——`pythonw` 跑计划任务时环境里可能没有 `DEEPSEEK_API_KEY`；
+- **压缩规矩（本版最要紧）**：先落盘、再压缩，**只认实测降幅**。水位到 300K（`persona_limits.MIRROR`）
+  → 导出原文 + sha256 回读校验 → `session.compress` → 再读 `context_breakdown` 比对前后。
+  **坑：`session.compress` 会假报成功**——实测 2 条消息的会话返回 `status: "compressed"`，
+  但 `removed: 0`、`before_tokens == after_tokens`、水位未降。按 status 判成败就会在该压时误报"压好了"，
+  所以没降一律记 `unconfirmed`；壳自带的自动压缩只当保底（阈值 0.8 ≈ 838K）；
+- **水位口径**：改由后端报的 `context_breakdown` 为准，sqlite 只当兜底——装到 D 盘后旧路径全对不上
+  （实测 `t_hctx` 一直报"本机没装 Hermes"）。底座开销 16.7K token，与聊过多少无关；
+- **设定文件单向生成**：`配置/内核/kernel.json` 是唯一源，`脚本/persona_soul.py` 渲染成
+  `HERMES_HOME\SOUL.md`；头部写源 sha256，幂等（没变不改文件），覆盖前自动 `.bak-时间戳`；
+- **本机事实**：GTX 960 **2 GB** 显存 + 15.9 GB 内存 → 本地模型不可行（列表最小的 27B 要 16.2 GB），
+  只有云端一条路；换壳顺带省内存（Hermes 全套 ≈ 0.68 GB，旧壳 ≈ 2.07 GB）；
+- **未完成**：微信 / QQ 通道（腾讯 iLink Bot 与 QQ 开放平台，均为官方 API、不需要公网 IP）、
+  余额显示进托盘（硅基的 `/v1/user/info` 已 410 下线）。
+
+> **为什么算版本**：交付形态换了壳、派发与压缩换了通道、水位换了口径——三条都是可验证的行为变化，
+> 不是文档整理。MINOR 而非 MAJOR：记忆仍在库里，检索与容器边界没动。
+
 ## v6.4.0 · 运行设计：把 5.3 / 5.8 / 5.9 / 6.1 / 6.3 串成一台智能设备的运行学（2026-11-11）
 
 人：「把 5.3 5.9 6.1 6.3，串联起来发一版，内容是未来智能机器人或者智能设备设计的运行设计」
