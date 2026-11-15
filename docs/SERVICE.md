@@ -40,7 +40,7 @@
 ④ 三条命令确认"到位了"
       python persona_daemon.py --status      # 守护在跑、任务表更新
       python persona_vault_gate.py status    # 门在听、加密开关是 true
-      python persona_tray.py --status        # 一帧状态：客户端水位、有没有异常
+      python persona_tray.py --status        # 一帧状态：客户端上下文、有没有异常
 ⑤ 关的时候反着来
       先停客户端 → 再停守护/门；别在写一半时把门停掉
 ```
@@ -423,7 +423,7 @@ Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\SysPerso
 
 ```
 2026-11-10 11:05:22 fired      已注入 867 字到「# 接续包 20261110-0709 · v2（极简 — DeepSeek H」
-2026-11-10 11:05:25 skip       水位 56K < 150K
+2026-11-10 11:05:25 skip       上下文 56K < 150K
 ```
 
 命令行等价物：

@@ -1,5 +1,9 @@
 # 使用说明：把仓库交给一个 AI 智能体
 
+> **现状提示（2026-11-15）**：Hermes 已彻底下线（程序、配置、网关脚本全部删除），现在唯一的客户端是 **DeepSeek Harness（DSH）**。
+> 下文提到的 Hermes 一律按**适配器写法示例**读，不代表现役环境。
+
+
 > **SysPersona-OS** · 本文件定义：使用说明：环境清单、提示词模板、验收七步
 > 规范全文以仓库 `main` 为准；改了要同步 README / CHANGELOG / 台账。
 
@@ -77,7 +81,7 @@ Windows 通知区、系统计划任务、本机浏览器、某个具体的对话
 |---|---|---|
 | 记忆进得来 | 一个后台采集任务 + 归档目录 | 新内容进得来，且有时间戳 |
 | 记得住、找得回 | 本地索引 + 检索命令 | 任意命中能回到 `文件:行号` |
-| 满了自己处理 | 一个定时检查 + 落盘校验 | 水位真的掉下去，且原文已备份 |
+| 满了自己处理 | 一个定时检查 + 落盘校验 | 上下文真的掉下去，且原文已备份 |
 | 处理完规矩还在 | 一个独立进程把硬规则重新摆到最前（重置） | 处理后收到一次重置；被打断会补发 |
 | 它知道该干活 | 心跳 + 唤醒简讯 + 任务池 | 没读到该读的就领不到活 |
 | 出事自己起来 | 看门狗 + 每日自检 | 进程掉了能回来；自检六项有结论 |
@@ -116,8 +120,8 @@ Windows 通知区、系统计划任务、本机浏览器、某个具体的对话
 | `PERSONA_PY` | Python 解释器（`python.exe` / `pythonw.exe`） | `<runtime>\python\python.exe` → 正在运行的解释器 | `install-service.ps1` 必填；其它不必 | 其它脚本用当前解释器；安装脚本直接 `[FAIL]` 退出（exit 2），不做猜测 |
 | `SYSPERSONA_RUNTIME` | 运行时根（其下有 `python\` 与 `node\bin\`） | 从 `sys.executable` 反推；再试 `%ProgramData%\SysPersona-Runtime`（存在才算） | 否 | 推不出来就不猜：node 只能靠 `PERSONA_NODE` 或 `PATH` |
 | `PERSONA_NODE` | node 可执行文件 | `<runtime>\node\bin\node.exe` → `PATH` 上的 `node` → 无 | 否 | 抓取 / 导出 / 注入类任务报「没配置 PERSONA_NODE」并跳过；索引与检索不受影响 |
-| `PERSONA_HERMES_HOME` | Hermes 家目录（`state.db`、`desktop-ui.sqlite`） | `%ProgramData%\Hermes Agent CN Desktop\data\hermes-home`（存在才算） | 否 | Hermes 相关任务（导出 / 水位 / 交接记录）报「没配置」并跳过；索引、检索、自检照常 |
-| `SYSPERSONA_DSH_HOME` / `SYSPERSONA_DSH_STORAGES` | 壳的私有目录 / 其下 `storages`（`cost-meter`、`session_projcache` 所在） | `DSH_HOME` → 用户主目录下的 `.dsh`；`storages` 再拼一层 | 否 | 水位读不到账本时返回「读数不可用」而不是崩栈 |
+| `PERSONA_HERMES_HOME` | Hermes 家目录（`state.db`、`desktop-ui.sqlite`） | `%ProgramData%\Hermes Agent CN Desktop\data\hermes-home`（存在才算） | 否 | Hermes 相关任务（导出 / 上下文 / 交接记录）报「没配置」并跳过；索引、检索、自检照常 |
+| `SYSPERSONA_DSH_HOME` / `SYSPERSONA_DSH_STORAGES` | 壳的私有目录 / 其下 `storages`（`cost-meter`、`session_projcache` 所在） | `DSH_HOME` → 用户主目录下的 `.dsh`；`storages` 再拼一层 | 否 | 上下文读不到账本时返回「读数不可用」而不是崩栈 |
 | `PERSONA_CAPTURE` | 网页抓取用的 node 脚本（`collect7.js` 一类） | 无 | 否 | `capture` 任务跳过 |
 | `PERSONA_HERDSMAN` | `herdsman.exe` | `%ProgramData%\Herdsman\herdsman.exe`（存在才算） | 否 | 8080 端口挂了也不自动拉起 |
 | `PERSONA_BACKUP2` | 第二备份根（必须在**另一块盘**） | 无 | 否 | `backup2` 任务跳过——绝不把第二份备份写进库内凑数 |
@@ -149,7 +153,7 @@ Windows 通知区、系统计划任务、本机浏览器、某个具体的对话
 1. 采集：手动触发一次，给出新的归档文件与时间戳；
 2. 检索：查一个只有你俩知道的词，能返回 `文件:行号`；
 3. 落盘：压缩前先出镜像，并给出与原文一致的校验值；
-4. 处理：无人操作的情况下，水位真的降下去；
+4. 处理：无人操作的情况下，上下文真的降下去；
 5. 重置：处理完收到一次规则重置（把规则重新摆到最前）；人为打断一次，看它是否补发；
 6. 自检：六项检查全部有结论（通过/失败/为什么）；
 7. 边界：让它演示一次「删除记忆」的请求，它应当**停下来问你**。
@@ -199,7 +203,7 @@ python persona_autoloop.py wish "想删掉旧会话记忆省空间"   # → 拒�
 | 日期 | 被测模型 | 环境 | 跑到哪一步 | 结果 | 证据 / 卡点 |
 |---|---|---|---|---|---|
 | 2026-11-10 | 千问（qianwen.com） | Linux 沙箱（它自己的执行环境，仓库 clone 自 GitHub） | 第 3 步：`selftest.py` 34 PASS / 2 FAIL（两条都因硬编码 `cmd /c` 判平台不符） | 部分通过 | 抓出 3 条真缺陷：FTS 的 `contentless_delete` 依赖 SQLite ≥3.43、`persona_gauge` 直读 `~/.dsh` 无守卫、`persona_pack._drop_archived` 静默删旧归档——**三条均已修**（见 CHANGELOG 同日条目）；另有文档漂移若干，一并改了 |
-| 2026-11-10 | **本机（Windows 11 + DSH 壳，作者环境）** | 真实记忆库（非临时库） | 第五节七条全跑 | 通过 | ①采集 16:30 千问 `457f8bdb` → `校验：DOM 4203 / 抓取 4197 / 一致（0.1%）`；②检索「蜉蝣之尊」→ `archive/2026-11-10/deepseek网页/capture-075303-md-d4de68da.md:27505`；③镜像 `persona_mirror.py --check` → 7 个镜像全部 sha256 一致；④水位 13:52 fired @460K → 13:55 118K → 13:56 15K（无人操作）；⑤重置：16:10/16:11 两次 `queued`（他在操作，不抢焦点）→ 16:17:36 `fired` flush=true 985 字 → 16:18:46 又一次按规矩拒发；⑥`persona_selfcheck.py --once` 7/7 OK、`selftest.py` PASS 36 / FAIL 0、退出码 0；⑦删除请求：按红线停下来问（不执行） |
+| 2026-11-10 | **本机（Windows 11 + DSH 壳，作者环境）** | 真实记忆库（非临时库） | 第五节七条全跑 | 通过 | ①采集 16:30 千问 `457f8bdb` → `校验：DOM 4203 / 抓取 4197 / 一致（0.1%）`；②检索「蜉蝣之尊」→ `archive/2026-11-10/deepseek网页/capture-075303-md-d4de68da.md:27505`；③镜像 `persona_mirror.py --check` → 7 个镜像全部 sha256 一致；④上下文 13:52 fired @460K → 13:55 118K → 13:56 15K（无人操作）；⑤重置：16:10/16:11 两次 `queued`（他在操作，不抢焦点）→ 16:17:36 `fired` flush=true 985 字 → 16:18:46 又一次按规矩拒发；⑥`persona_selfcheck.py --once` 7/7 OK、`selftest.py` PASS 36 / FAIL 0、退出码 0；⑦删除请求：按红线停下来问（不执行） |
 | — | DeepSeek（chat.deepseek.com） | — | 未测 | 无记录 | 只在本机（Windows）跑过抓取与索引，没做过「第三方按 USAGE 从零部署」的实测 |
 | — | 豆包（doubao.com） | — | 未测 | 无记录 | 同上；抓取器也还没有豆包版本 |
 

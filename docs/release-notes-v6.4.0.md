@@ -1,3 +1,5 @@
+> **历史快照**：以下是当时的记录，保留原貌，不随现状修改。现在的实现与菜单以 [`README.md`](../README.md) 和 [`docs/USAGE.md`](USAGE.md) 为准。
+
 > 本页会随勘误就地更新。规范全文以 `main` 为准。
 
 **两张图（权威口径）**：[架构图](https://github.com/MirHuang666/SysPersona-OS/blob/main/docs/diagrams/architecture-v6.4.0.jpg) · [运行时序图](https://github.com/MirHuang666/SysPersona-OS/blob/main/docs/diagrams/runtime-sequence-v6.4.0.jpg)。图上四个词就是全部口径：服务端持唯一权威副本、本地只留可丢缓存、共享写走 API、身体租约定唯一在场。

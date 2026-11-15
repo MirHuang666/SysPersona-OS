@@ -69,7 +69,7 @@
 $PY = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe"
 $R  = $env:MEM
 
-& $PY $R\ctxguard.py                       # 水位
+& $PY $R\ctxguard.py                       # 上下文
 & $PY $R\ctxguard.py --prepare             # 出包 + 剪贴板
 & $PY $R\ctxguard.py --prepare --canonical --no-clip   # 覆盖 接续包-最新.md（周期任务用的就是它）
 & $PY $R\index_l1.py                       # 一级索引（0.5 秒）
@@ -84,8 +84,8 @@ $R  = $env:MEM
 
 | 任务 | 周期 | 干什么 |
 |---|---|---|
-| `SysPersona-CtxGuard` | 10 分钟 | 测水位；到线交接（先镜像再出包）；阈值只在 `persona_limits.py` 一处定义（现行 150/250/300/1M） |
-| `SysPersona-Compact` | **5 分钟** | **量水位 → 到 350K 且冷却已过 → 敲 `/compact` 让壳自己压**（`pythonw` 无窗，`ops/compact.jsonl` 留痕） |
+| `SysPersona-CtxGuard` | 10 分钟 | 测上下文；到线交接（先镜像再出包）；阈值只在 `persona_limits.py` 一处定义（现行 150/250/300/1M） |
+| `SysPersona-Compact` | **5 分钟** | **量上下文 → 到 350K 且冷却已过 → 敲 `/compact` 让壳自己压**（`pythonw` 无窗，`ops/compact.jsonl` 留痕） |
 | `SysPersona-Handoff-Refresh` | 30 分钟 | **覆盖** `续接\接续包-最新.md`（防丢） |
 | `SysPersona-DeepSeek-LiveWatch` | 每天 03:30 | 整页重载一次，防积压 |
 | `SysPersona-DeepSeek-FullSweep` | 每周日 21:00 | 全量巡检 |
@@ -130,13 +130,13 @@ $R  = $env:MEM
   汇总角色改为**按可靠性打分选主**（15 分差 + 10 分钟才换人）；`POST /ingest` 只收密文。
   **同步不归本项目**（人定：本机 → NAS → 网盘 → 硬盘镜像，保留历史版本）。
 - **可用版：v6.1.0 · 客户端接入与容灾降级（2026-11-11）**——这一版把"和外部客户端怎么相处"写成契约：
-  认得它（进程名）、看着它（水位/版本）、在受限范围里操作它（注入 / 调试口 / 命令行 / 只重启内核 / 拉起网关）；
+  认得它（进程名）、看着它（上下文/版本）、在受限范围里操作它（注入 / 调试口 / 命令行 / 只重启内核 / 拉起网关）；
   换一个客户端 = 加一段配置，不改代码。同时把出事后的降级路径成文：进程 / 配置 / 模型 / 通道四层，
   模型链 `paid → cloud → local`，断网靠微信代班卡，恢复顺序固定（网关 → 内核 → 窗口 → 重读）。
   **容灾的自动换档默认关着**（判定与记账在跑），"没做完的东西不假装做完"。
   托盘一侧的规格重写属 5.1 线（`docs/TRAY_SPEC.md`），不占本版编号。
 - **可用版：v6.0.0 · 整套落到一台 Windows 电脑上（2026-11-10）**——前几版各自交付一块，这一版收口：
-  满了自己处理（359K → 121K，无人操作）、处理完自己重置规矩（按水位带把规则重新摆到最前；打断会排队补发）、
+  满了自己处理（359K → 121K，无人操作）、处理完自己重置规矩（按上下文带把规则重新摆到最前；打断会排队补发）、
   采集在后台完成、出事自己修（看门狗 15 分钟 + 每日自检六项 + 告警）。
   **平台明确为 Windows 10/11 端，无 Linux/macOS 实现，不依赖云服务，也不修改任何第三方程序。**
   编号属例外（`RELEASING` §三 里 6.0 应留给破坏性变更），已在 CHANGELOG 记明。
@@ -147,8 +147,8 @@ $R  = $env:MEM
   **多节点、高频读写请用这条 5.8 线**（`persona_lanbus.py`，走 HTTP 不共享目录、不靠文件时间戳），
   或者自建服务器；虚拟组网（ZeroTier/Tailscale）只负责连通。理由与时间戳问题见 `SIMPLE_SYNC_SPEC.md` §一点五。
 - 设计版：**v5.1.0**（2026-11-09 托盘设计：`docs/TRAY_SPEC.md`，托盘不是智能体）
-- 工具版：**v5.2.0 · 托盘状态显示**（2026-11-10 重写：`tools/tray/persona_tray.py`；按客户端数量并排画正方形、只显示在跑的、各自显示水位；只读不代办）
-- 后台版：**v5.4.0 · 后台处理**（2026-11-10 交付：`docs/BACKGROUND_SPEC.md` v1.4 + `persona_compact.py`；水位 350K 由系统计划任务每 5 分钟量一次，到线自己敲 `/compact` 让壳压——实测 377K → 18K；镜像线 300K 早于压缩线；**压完由独立进程「设定重载器」按水位带把规则重新摆到最前（重置）**——150K 起每 +100K 一次，不按时间，不抢人也不撞自己）
+- 工具版：**v5.2.0 · 托盘状态显示**（2026-11-10 重写：`tools/tray/persona_tray.py`；按客户端数量并排画正方形、只显示在跑的、各自显示上下文；只读不代办）
+- 后台版：**v5.4.0 · 后台处理**（2026-11-10 交付：`docs/BACKGROUND_SPEC.md` v1.4 + `persona_compact.py`；上下文 350K 由系统计划任务每 5 分钟量一次，到线自己敲 `/compact` 让壳压——实测 377K → 18K；镜像线 300K 早于压缩线；**压完由独立进程「设定重载器」按上下文带把规则重新摆到最前（重置）**——150K 起每 +100K 一次，不按时间，不抢人也不撞自己）
 - 设计版：**v5.5 / v5.6**（2026-11-09 任务调度 / 记忆网络**设计成文**，实现在后续小版：`docs/SCHEDULER_SPEC.md`、`docs/MEMORY_NET_SPEC.md`）
 - 运行时：**v5.3.0**（2026-11-09 保活 + 交互代理：`tools/persona/`，唤醒→读总索引→报到→派发，含重试上限与「保活只报不拉」；协议 `docs/INTERACT_SPEC.md`）
 - 落地版：**v5.0.0**（2026-11-09 寄生在开源壳上的记忆层：`docs/SHELL_ADOPTION.md`）——v5 线只讲壳接入。
@@ -278,7 +278,7 @@ $gh = $env:GH_EXE
 | 技能 | 域 | 管什么 |
 |---|---|---|
 | `session-recall` | 运行 | 唤醒顺序、一级索引、zsearch 检索 |
-| `ctxguard-ops` | 运行 | 水位、到线交接与自动压缩、剪贴板、定时任务核对 |
+| `ctxguard-ops` | 运行 | 上下文、到线交接与自动压缩、剪贴板、定时任务核对 |
 | `capture-pipeline` | 运行 | F5 抓取、read_watch、导出、残缺快照防护 |
 | `release-ops` | 代码 | 发版判定、CHANGELOG、tag、Release、台账回写 |
 | `ctxpack-tools` | 代码 | 索引、检索、eval 回归、排障 |
@@ -291,7 +291,7 @@ $gh = $env:GH_EXE
 | 技能 | 依赖的正文 | 正文改了必须检查 |
 |---|---|---|
 | `session-recall` | `HANDOFF_SPEC.md`、`index_l1.py` 用法 | 唤醒顺序、命令块 |
-| `ctxguard-ops` | `HANDOFF_SPEC.md`、本备忘 §四 | 水位阈值、任务名 |
+| `ctxguard-ops` | `HANDOFF_SPEC.md`、本备忘 §四 | 上下文阈值、任务名 |
 | `capture-pipeline` | 本备忘 §二（坑表）、`tools/ctxpack/` | 抓取命令、`---` 分隔线规则 |
 | `release-ops` | `RELEASING.md`、本备忘 §一/§九 | 发版判定、git/gh 路径、四段式 |
 | `ctxpack-tools` | `tools/ctxpack/SKILL.md` | 参数默认值（K=100）、回归基线 |

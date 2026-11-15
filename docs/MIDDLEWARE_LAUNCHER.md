@@ -135,7 +135,7 @@ v1.0.0 §0 的公理是「模型不构成人格」。落到Runtime，它不是�
 
 | 方法 | 路径 | 用途 | 关键语义 |
 |---|---|---|---|
-| GET | `/syspersona/status` | 人格版本、水位、预算占用、缓存命中率、档位 | 永远可用 |
+| GET | `/syspersona/status` | 人格版本、上下文、预算占用、缓存命中率、档位 | 永远可用 |
 | POST | `/syspersona/wake` | 解锁 + 加载 + 预热 | 幂等；已唤醒返回 200 并带 `already` |
 | POST | `/syspersona/sleep` | 触发固化 | 默认异步 `202`，`?sync=1` 时同步 |
 | POST | `/syspersona/seal` | 封存为 `.syspersona` | 前置：无进行中的生成 |
@@ -194,7 +194,7 @@ sequenceDiagram
     participant R as Router
     participant L as 本地模型
     C->>G: POST /v1/chat/completions
-    G->>G: 鉴权 / 队列 / 水位
+    G->>G: 鉴权 / 队列 / 上下文
     G->>A: 组装(messages, budget)
     A->>M: 检索(query, memory_budget)
     M-->>A: 片段[带 id/时间/分数]
@@ -210,7 +210,7 @@ sequenceDiagram
 
 | 阶段 | 目标 p95 | 备注 |
 |---|---|---|
-| 鉴权 + 水位 | 2 ms | 内存态 |
+| 鉴权 + 上下文 | 2 ms | 内存态 |
 | 人格读取 | 1 ms | 启动时已缓存，按 mtime+hash 校验 |
 | 检索（词面） | 15 ms | FTS5 实测 0.13 ms；留出反序列化与打分 |
 | 检索（+向量重排 200 条） | 60 ms | 实测余弦 0.096 ms/条 |
@@ -352,11 +352,11 @@ final = relevance × (1 + 0.25·profile_norm + 0.15·attention_norm + 0.15·pers
 
 `τ`：`attention` 2 天，`profile` 90 天，`preference` 90 天，`promise/boundary` 不衰减。
 
-### 8.4 检索预算与水位
+### 8.4 检索预算与上下文
 
 - `memory_budget` 用完即停，按分数从高到低装，装不下就停，不做"再塞一条试试"。
 - 保底：`boundary` 与 `promise` 无论分数高低，先占位（上限各 3 条）。
-- 水位：`usage = injected_tokens / memory_budget`。`usage > 1.0` 记一次 `overflow` 事件；连续 3 轮溢出 → 触发一次轻量压缩（只压 `episode`，不动 `promise/boundary`）。
+- 上下文：`usage = injected_tokens / memory_budget`。`usage > 1.0` 记一次 `overflow` 事件；连续 3 轮溢出 → 触发一次轻量压缩（只压 `episode`，不动 `promise/boundary`）。
 
 ---
 
@@ -692,7 +692,7 @@ curl -s localhost:11434/api/show -d "{\"model\":\"qwen2.5:1.5b\"}"
 | **T04** | 估算校准 | 20 轮 | 真实与估算偏差 < 15% |
 | **T05** | 记忆位置 A/B | `tail` vs `head`，8 条探针问题 | `tail` 正确引用记忆条数 ≥ `head`，且 T02 更好 |
 | **T06** | 上下文满 | 连续 50 轮触发睡眠 | 有新指针；下一轮能接上"刚才在做什么"（人工 3 选 1） |
-| **T07** | 压力驱逐 | 压低预算触发 1.0 水位 | 最近 2 轮与 `promise/boundary` 未被驱逐 |
+| **T07** | 压力驱逐 | 压低预算触发 1.0 上下文 | 最近 2 轮与 `promise/boundary` 未被驱逐 |
 | **T08** | 崩溃恢复 | 睡眠中 `kill -9`，重启 | 无半写文件；`active` 指针未变脏；episode 计数不丢 |
 | **T09** | 加密完整性 | 篡改容器 1 字节 / 错口令 / 正确口令 | 分别：verify 失败 / 423 / 解出数据 sha256 一致 |
 | **T10** | 权限拦截 | 自动流程写 kernel；单次 traits 改 +5 | 403 / 拒绝；审计各记一条 |
@@ -807,7 +807,7 @@ data/
 |---|---|---|---|
 | §6.3 vs §6.5 | 评分式一为乘法、一为加法 | 乘法门控 + 加法加成 | 避免低相关记忆靠人格权重挤入 |
 | §8.2 | "人格与记忆打包为加密容器" | 加密改为**可选状态**（§15.1），运行期只做静态封存 | 运行期全库加密不可行；是否加密应可选 |
-| §9.2 | 只按 token 水位做优先级反转 | 增加内存水位（350 MB） | 4 GB 机器先 OOM 再爆上下文 |
+| §9.2 | 只按 token 上下文做优先级反转 | 增加内存上下文（350 MB） | 4 GB 机器先 OOM 再爆上下文 |
 | §7.3 | 未定义记忆注入位置 | 补 `memory_position` 与缓存规则 | 直接决定首 token 延迟 |
 
 ---

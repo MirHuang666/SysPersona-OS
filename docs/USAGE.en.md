@@ -1,5 +1,9 @@
 # Usage: hand the repo to an AI agent
 
+> **现状提示（2026-11-15）**：Hermes 已彻底下线（程序、配置、网关脚本全部删除），现在唯一的客户端是 **DeepSeek Harness（DSH）**。
+> 下文提到的 Hermes 一律按**适配器写法示例**读，不代表现役环境。
+
+
 > **SysPersona-OS** · 本文件定义：使用说明（英文版）
 > 规范全文以仓库 `main` 为准；改了要同步 README / CHANGELOG / 台账。
 

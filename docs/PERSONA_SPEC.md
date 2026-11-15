@@ -20,7 +20,7 @@
 |---|---|---|---|
 | `kernel.json` | 身份、价值观、边界、语气基线、交互模式、宪法、能力面 | **只有人** | 走"改内核"特殊流程 |
 | `traits.json` | 偏好权重、反射、演化参数 | **结算点**（睡眠 / consolidate） | 单写者；AI 不得直接写 |
-| `state.json` | 情绪、在场、指针、水位 | 运行时 | 实时可写 |
+| `state.json` | 情绪、在场、指针、上下文 | 运行时 | 实时可写 |
 | `memory.db` | 情景 / 事实 / 实体 / 向量 / 审计 | 运行时追加 | 清理有规则（先有替代物再清） |
 
 > 三条硬约束：**文件是真相，数据库是缓存**；`traits`/`kernel`/`permissions` 只有一个写入来源；
@@ -63,7 +63,7 @@
 | `traits.preferences[]` | `id` / `target` / `polarity`(like·dislike) / `weight` / `baseline` / `locked` | 性格偏好与权重 |
 | `traits.reflexes[]` | `id` / `trigger` / `reaction` / `strength` | 反射式反应 |
 | `memory.retention` | `hot_days` / `warm_days` / `prune_days` | 记忆分层保留 |
-| `memory.context_budget` / `low_watermark` | 上下文预算、低水位比 | 检索与压缩阈值 |
+| `memory.context_budget` / `low_watermark` | 上下文预算、低上下文比 | 检索与压缩阈值 |
 | `evolution.*` | `min_evidence` / `max_step` / `weekly_cap` | 权重演化单步与周额度（**历史口径**：现行见 `PHILOSOPHY` §10.1——重载即重置，不锁性格） |
 | `evolution.polarity_flip` | `dead_zone` / `min_reverse_evidence` / `requires_human` | 极性翻转闸门 |
 | `evolution.anti_rigidity` | 6 个参数 | 抗僵化 |
@@ -118,7 +118,7 @@ ALTER TABLE episodes ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'episode';
 | `memory_type` | `persona_conflict` |
 | `content` | JSON：`{"refused":true,"clause":"<被触发的内核条款>","instruction":"<指令摘要>","decided":"refused","at":"<ISO8601>"}` |
 | `summary` | 一句人话：「因 <条款> 拒绝了 <指令摘要>」 |
-| `importance` | `0.9`（高于普通对话，防止被低水位优先驱逐） |
+| `importance` | `0.9`（高于普通对话，防止被低上下文优先驱逐） |
 
 **同时**在 `audit_log` 记 `action='refuse'`，`detail` 同上 JSON。
 

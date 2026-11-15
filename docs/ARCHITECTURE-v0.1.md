@@ -1,3 +1,5 @@
+> **历史快照**：以下是当时的记录，保留原貌，不随现状修改。现在的实现与菜单以 [`README.md`](../README.md) 和 [`docs/USAGE.md`](USAGE.md) 为准。
+
 > **SysPersona-OS** · 本文件定义：架构 v0.1 的完整叙述，已归档；现行设计看 *.md 各规范
 > 规范全文以仓库 `main` 为准；改了要同步 README / CHANGELOG / 台账。
 

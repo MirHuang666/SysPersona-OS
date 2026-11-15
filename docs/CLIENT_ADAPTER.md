@@ -1,5 +1,9 @@
 # 客户端接入 — CLIENT_ADAPTER
 
+> **现状提示（2026-11-15）**：Hermes 已彻底下线（程序、配置、网关脚本全部删除），现在唯一的客户端是 **DeepSeek Harness（DSH）**。
+> 下文提到的 Hermes 一律按**适配器写法示例**读，不代表现役环境。
+
+
 > **SysPersona-OS** · 本文件定义：客户端接入契约：一个客户端 = 一段配置 + 一份能力声明
 > 规范全文以仓库 `main` 为准；改了要同步 README / CHANGELOG / 台账。
 
@@ -16,7 +20,7 @@
 
 ```text
 记忆库（人格 + 分层记忆 + 台账）
-    │  只读：进程 / 水位 / 版本 / 会话文件
+    │  只读：进程 / 上下文 / 版本 / 会话文件
     └── 受限操作：发一句话、重启内核、重启窗口、拉起网关
 ```
 
@@ -27,7 +31,7 @@
 | 字段 | 回答什么 | 例（Hermes） |
 |---|---|---|
 | `img` | 靠哪个 exe 名认出"它在跑" | `hermes-agent-cn-desktop.exe` / `…-runtime-win32-x64.exe` |
-| `wm` | 水位从哪读 | `hermes`（读守护写的 `ops/hctx.json`；没有就只报"在跑"） |
+| `wm` | 上下文从哪读 | `hermes`（读守护写的 `ops/hctx.json`；没有就只报"在跑"） |
 | `actions` | 能对它做什么、用哪种方法 | `compact: cdp`、`kernel: restart-kernel`、`gateway: keeper` |
 | `open` | 它的会话/日志在哪 | `hermes-home\sessions` |
 | **`detect`** | **它装在哪、配置在哪、工作目录在哪**（2026-11-11 新增） | exe / `config.yaml` / `hermes-home` |
@@ -99,7 +103,7 @@
 | 事 | 走哪条路 | 怎么验证 |
 |---|---|---|
 | 看在不在 | 进程名（`img`） | 托盘状态 |
-| 水位 | `ops/hctx.json`（守护写） | 托盘 tooltip |
+| 上下文 | `ops/hctx.json`（守护写） | 托盘 tooltip |
 | 版本 | exe 的 FileVersion + `data\versions\*\manifest.json` 的 `runtimeVersion` | 托盘「客户端版本」 |
 | 压缩上下文 | CDP 调试口发 `/compact` | 页面返回 `SENT` |
 | 重读设定 | 同上，发一句"读 MEMORY" | 同上 |
@@ -113,7 +117,7 @@ Hermes 比 DSH 好办的地方：**它有 CLI、有调试口、有本地 HTTP**�
 ## 五、加一个新客户端：五步
 
 1. **把它开起来**，任务管理器看它的进程名（这就是 `img` 的候选）。
-2. **定水位**：它有本地状态文件/接口能读吗？能就写个适配读进 `wm`；不能就留空——**留空只报"在跑"，不算异常**。
+2. **定上下文**：它有本地状态文件/接口能读吗？能就写个适配读进 `wm`；不能就留空——**留空只报"在跑"，不算异常**。
 3. **定动作**：它能用什么方法？（有调试口 → `cdp`；有 CLI → `cli`；都没有 → `inject`）
    拿不准就先只写 `status: true`，别一上来就给它配重启。
 4. **写进 `ops/tray-clients.json`** 的 `clients` 里一段，`on: true`，重启托盘。
