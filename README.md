@@ -15,6 +15,7 @@
 > [`docs/ARCHITECTURE-OVERVIEW.md`](docs/ARCHITECTURE-OVERVIEW.md)。
 > **怎么选**：用 DSH 的，直接用插件（形态 B）；要「不依赖客户端、独立常驻」的，用托盘（形态 A）。
 > 托盘现行实现见 [`docs/TRAY-CURRENT.md`](docs/TRAY-CURRENT.md)（2026-11-16 与 `tools/tray/` 代码同步）。
+> **来源与许可证**：本仓库与插件吸收过第三方项目的部分设计/算法（均为 MIT）；逐项来源、吸收范围、许可义务、以及「能不能发布」的判断，见 [`docs/PROVENANCE.md`](docs/PROVENANCE.md)。
 > 下文「现状」一节写的是**形态 A 的托盘菜单**，仍然成立、可部署；本机现在跑的是形态 B。
 
 ## 现状（2026-11-15）
