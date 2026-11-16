@@ -24,6 +24,11 @@ Prompt template, environment inventory, seven-step acceptance list → **[`docs/
 
 Today's AI products are **stateless**. Close a session and the context is gone; reopen it and the model still has all its general knowledge, but nothing about you. When the context window fills, platforms truncate or reset it — persona settings, forms of address, shared history, promises and boundaries disappear together.
 
+> **The target was tightened on 2026-11-15.** "You still remember after opening a new session" is not enough — that only moves the amnesia point one step further out.
+> The hard requirement is **not forgetting after context compaction either**: mirror the raw transcript to disk and prove it with sha256 *before* compacting,
+> then reload the rules and pointers immediately afterwards. If it cannot be written to disk, it must not be compacted.
+> **Compaction is not an amnesia point, and neither is switching windows** — whatever is read back must be the same memory, not a summary of it.
+
 Three failure modes follow:
 
 1. **Truncation** — working memory overflows; the middle of the conversation collapses.
