@@ -16,6 +16,9 @@
   可收档（`/lib/put`），host / member 两种角色；成员归档**传主机 → 校验 sha256 一致 → 删本地**，
   失败进 `node-outbox.jsonl`，主机上线自动补传；**没有回执不删本地**（红线：不许因传输问题丢会话）；
 - 部署收敛为 `脚本/persona_deploy.py`：环境变量 / `C:\SysPersona` 联接 / 插件安装 / 计划任务，四步幂等，带 `--check`；
+- **定性**：插件是**寄生形态**（跑在 DSH 进程里、依赖它的 loader 与 `ctx.*` 接口，DSH 换版可能断），
+  托盘是**独立形态**（自己一个进程，对 DSH 无感）。两套并存不是过渡，是"能力 vs 耐久"的两种必要存在方式；
+  因此插件每次 DSH 升级都要重验，且失效必须自己报出来（不许静默）；
 - **托盘代码与规格同步到最新实现**：`tools/tray/persona_tray_multi.py` 由 84 KB（2026-11-15）更新为
   **198 KB / 3988 行**（2026-11-16 13:57），并同步 `persona_tray.py`、`persona_tray_version.py`、
   `persona_client_probe.py`；新增 [`docs/TRAY-CURRENT.md`](docs/TRAY-CURRENT.md)，写现行菜单、配置、判据、已知坑，
