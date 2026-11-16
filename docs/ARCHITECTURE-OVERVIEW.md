@@ -22,7 +22,9 @@
 | 设置在哪 | 托盘菜单 + `ops/tray-clients.json` | 插件设置页 + `ops/<机器>/persona.conf.json` |
 | 优点 | 不依赖客户端；客户端崩了托盘还在 | 一处配置、一处日志、一处部署；跨机同构 |
 | 代价 | 两套代码要同时维护；托盘图标随 explorer 重启掉；跨机配置容易不一致 | 客户端不跑，节点就离线；插件随 DSH 版本走 |
-| 现状（2026-11-16） | **保留、可部署、本机已停用** | **本机正在用** |
+| 现状（2026-11-16） | **保留、可部署**；本机不再跑托盘（改用插件），但代码与规格已同步到最新实现 | **本机正在用** |
+
+**怎么选**：用 DSH 的，直接用插件（形态 B）；要「不依赖客户端、独立常驻」的，用托盘（形态 A，现行实现见 [`TRAY-CURRENT.md`](TRAY-CURRENT.md)）。
 
 ## 共同底座（两套形态都依赖，不随形态变）
 
@@ -99,8 +101,8 @@ python 脚本\persona_deploy.py --role member --hub http://192.168.1.14:8738 --f
 
 ## 文档导航
 
-**形态 A（托盘/启动器）**：`docs/LAUNCHER_SPEC.md`、`docs/MIDDLEWARE_LAUNCHER.md`、
-`docs/TRAY_SPEC.md`、`docs/SERVICE.md`、`docs/CLIENT_ADAPTER.md`。
+**形态 A（托盘/启动器）**：**现行实现先读 [`docs/TRAY-CURRENT.md`](TRAY-CURRENT.md)**（2026-11-16 与代码同步）；
+设计来源与历史：`docs/LAUNCHER_SPEC.md`、`docs/MIDDLEWARE_LAUNCHER.md`、`docs/TRAY_SPEC.md`、`docs/SERVICE.md`、`docs/CLIENT_ADAPTER.md`。
 
 **形态 B（插件 + 节点）**：本页；实现见 `配置/客户端/plugins/persona-core/README.md`（库内）。
 

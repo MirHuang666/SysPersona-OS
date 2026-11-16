@@ -16,6 +16,10 @@
   可收档（`/lib/put`），host / member 两种角色；成员归档**传主机 → 校验 sha256 一致 → 删本地**，
   失败进 `node-outbox.jsonl`，主机上线自动补传；**没有回执不删本地**（红线：不许因传输问题丢会话）；
 - 部署收敛为 `脚本/persona_deploy.py`：环境变量 / `C:\SysPersona` 联接 / 插件安装 / 计划任务，四步幂等，带 `--check`；
+- **托盘代码与规格同步到最新实现**：`tools/tray/persona_tray_multi.py` 由 84 KB（2026-11-15）更新为
+  **198 KB / 3988 行**（2026-11-16 13:57），并同步 `persona_tray.py`、`persona_tray_version.py`、
+  `persona_client_probe.py`；新增 [`docs/TRAY-CURRENT.md`](docs/TRAY-CURRENT.md)，写现行菜单、配置、判据、已知坑，
+  以及「托盘与插件并存时各自只做什么」；
 - 本页只是记录架构变更，**不发版**——按 `docs/RELEASING.md`，纯文档修订只记 CHANGELOG、不切版本号。
 
 ## v6.5.0 · 换壳：从「寄生社区版」改成「接官方壳 + 接管接口」（2026-11-13）

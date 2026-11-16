@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os as _os_shim, sys as _sys_shim
+_sys_shim.path.insert(0, _os_shim.path.join(_os_shim.path.dirname(_os_shim.path.abspath(__file__)), "脚本"))
 # SysPersona-OS · 本文件：persona_tray.py — 托盘状态灯：多客户端并列显示 + 实时水位
 r"""persona_tray.py — 托盘状态灯：多客户端并列显示 + 实时水位
 
@@ -27,6 +29,7 @@ r"""persona_tray.py — 托盘状态灯：多客户端并列显示 + 实时水�
 不设就按脚本自身目录向上找含 ops\ 与 sessions\ 的目录，再找不到直接报错——不再写死盘符。
 """
 import json
+import io
 import os
 import subprocess
 import sys
@@ -35,6 +38,7 @@ import time
 
 import pystray
 from PIL import Image, ImageDraw
+import persona_io as _pio  # stdio/时间统一（v6.13.0）
 
 def _load_persona_root():
     """记忆库根的最后一道兜底：仓库那份是 `root(strict=False)`，记忆库里那份只有 `find_root()`。
@@ -69,10 +73,17 @@ def _resolve_root():
     env = os.environ.get("MEM") or os.environ.get("SYSPERSONA_MEM")
     if env and os.path.isdir(env):
         return env
-    here = os.path.dirname(os.path.abspath(__file__))
+    here = os.path.dirname(os.path.realpath(__file__))
     cur = here
     for _ in range(6):
-        if os.path.isdir(os.path.join(cur, "ops")) and os.path.isdir(os.path.join(cur, "sessions")):
+        # 2026-11-12 修：只看 ops + sessions 不够——脚本目录下自己也会长出这两个
+        # （今天实测 脚本\ops、脚本\sessions 都有），于是 ROOT 被认成「脚本」，
+        # 水位读不到、守护状态文件「缺失」、托盘一直红。真正的库根还要有
+        # memory / index / archive / 续接 其中至少一个。
+        if (os.path.isdir(__import__("persona_ops").dir())
+                and os.path.isdir(os.path.join(cur, "sessions"))
+                and any(os.path.isdir(os.path.join(cur, m))
+                        for m in ("memory", "index", "archive", "续接"))):
             return cur
         cur = os.path.dirname(cur)
     if _PERSONA_ROOT is not None:
@@ -87,19 +98,30 @@ def _resolve_root():
 
 
 ROOT = _resolve_root()
-OPS = os.path.join(ROOT, "ops")
+try:                                  # 运行态按机器分家（各写各的，但照样同步，能看对方历史）
+    import persona_ops as _po
+except Exception:                     # 半同步状态（新文件还没到）也不许把守护搞死
+    class _po:                        # noqa: N801
+        @staticmethod
+        def dir():
+            return os.path.join(ROOT, "ops")
+        @staticmethod
+        def shared():
+            return os.path.join(ROOT, "ops")
+OPS = _po.dir()                      # 本机运行态：ops\<机器id>\
+OPS_SHARED = _po.shared()            # 共享层：ops\ 根（配置放这）
 STATUS = os.path.join(OPS, "persona-status.json")
 HCTX = os.path.join(OPS, "hctx.json")
 LOG = os.path.join(OPS, "persona.log")
 PY = os.path.join(os.path.dirname(sys.executable), "python.exe")
-GAUGE = os.path.join(ROOT, "persona_gauge.py")
-COMPACT = os.path.join(ROOT, "persona_compact.py")     # 菜单「立即压缩一次」跑的脚本
+GAUGE = os.path.join(ROOT, "脚本/persona_gauge.py")
+COMPACT = os.path.join(ROOT, "脚本/persona_compact.py")     # 菜单「立即压缩上下文」跑的脚本
 
 # 注入告警（2026-11-10）：状态/三档判定/提示音都在记忆库的 persona_inject.py 里，
 # 托盘只读它，阈值不在这里复制一份。
 # 不能直接 `import persona_inject`：仓库 tools\ctxpack 下也有一份旧版，会抢先命中。
 def _load_inject():
-    path = os.path.join(ROOT, "persona_inject.py")
+    path = os.path.join(ROOT, "脚本/persona_inject.py")
     if not os.path.exists(path):
         return None
     try:
@@ -131,8 +153,8 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 # 客户端识别：进程名 → 显示名（顺序即图标里环的顺序）
 CLIENTS = [
     ("DeepSeek Harness.exe", "DSH"),
-    ("hermes.exe", "Hermes"),
-    ("Hermes.exe", "Hermes"),
+    ("hermes.exe", "Hermes"),          # 官方 CLI / 网关进程
+    ("Hermes.exe", "Hermes"),          # 官方桌面（Electron，界面+后端同体）
     ("cherry-studio.exe", "Cherry"),
     ("Cursor.exe", "Cursor"),
 ]
@@ -281,11 +303,18 @@ def _load_gauge():
     （pressureTokens → 账本增量 → Hermes → 账本平均），pressureTokens 缺失时它会
     悄悄换成别处的数——那就又变成「两个入口两个水位」了。
     """
-    path = os.path.join(ROOT, "persona_gauge.py")
+    path = os.path.join(ROOT, "脚本/persona_gauge.py")
     if not os.path.exists(path):
         return None
     try:
         import importlib.util
+        # 2026-11-12 修：按文件路径 exec 时，脚本自己那层目录**不在** sys.path 里，
+        # 而 persona_gauge 第一句就是 `from persona_root import …` → 必然 ImportError，
+        # 于是整条链路悄悄降级成「旧读法 / 读数不可用」（实测这台机器一直显示 ?）。
+        # 跑 __main__ 时是 cwd 兜的，所以以前没露出来。
+        _d = os.path.dirname(path)
+        if _d not in sys.path:
+            sys.path.insert(0, _d)
         spec = importlib.util.spec_from_file_location("persona_gauge_live", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -379,7 +408,7 @@ def _load_cost():
     与 _load_gauge 同理：不能 `import persona_cost`（仓库 tools\\ctxpack 下那份会抢先命中），
     按文件路径加载记忆库里的活版本；加载失败只是不显示成本，不影响托盘启动。
     """
-    path = os.path.join(ROOT, "persona_cost.py")
+    path = os.path.join(ROOT, "脚本/persona_cost.py")
     if not os.path.exists(path):
         return None
     try:
@@ -478,7 +507,7 @@ def client_rows():
                      "note": d.get("note") or ""})
 
     h = hermes_watermark()
-    hn = counts.get("hermes.exe", 0) + counts.get("Hermes.exe", 0)
+    hn = sum(counts.get(img, 0) for img, label in CLIENTS if label == "Hermes")
     if hn:
         rows.append({"name": "Hermes", "alive": True, "procs": hn, "wm": bool(h),
                      "ctx": (h or {}).get("ctx"), "max": (h or {}).get("max"),
@@ -511,6 +540,19 @@ def wm_part(r):
 
 
 # ── 守护健康 ─────────────────────────────────────────────────────────
+def _short(text, n=46):
+    """把任务消息压成一行：去掉长路径、折叠空白、截断。
+
+    2026-11-11 13:47 人报「排版不对」：一条消息里塞着 `D:\\4590-PC-文件\\…\\L1.md`
+    这种整条路径，一撑就换行，列全乱了。
+    """
+    import re as _re
+    s = str(text or "").replace("\r", " ").replace("\n", " ")
+    s = _re.sub(r"[A-Za-z]:\\[^\s|）)]+", lambda m: m.group(0).split("\\")[-1], s)
+    s = _re.sub(r"\s{2,}", " ", s).strip()
+    return (s[:n] + "…") if len(s) > n else s
+
+
 def daemon_health():
     st = read_json(STATUS)
     if not st:
@@ -539,17 +581,29 @@ def snapshot():
     # 竖条顺序 = 客户端顺序（位置固定，便于辨认：左=DSH，右=下一个）
     bars = [(color_of(r["pct"]), r["pct"], r["ctx"] is not None) for r in rows]
 
-    parts = [wm_part(r) for r in rows]
-    title = "SysPersona · " + (" · ".join(parts) if parts else "没有客户端在跑")
+    # 2026-11-12 人定（截图划重点）：**一行一件事**——
+    #   第一行 名称
+    #   第二行 金额
+    #   之后   每个客户端各占一行（名称 + 水位 + 进程数）
+    # 原来是一整行 "SysPersona · DSH … · Hermes … ｜ 今日 ¥…"，客户端一多就挤；
+    # 而且金额在弹窗里会跟【成本】那段**重复显示两次**，这次一起去掉。
+    parts = []
+    for r in rows:
+        seg = wm_part(r)
+        if r.get("procs"):
+            seg += " · %d 进程" % r["procs"]
+        parts.append(seg)
+    title = "SysPersona"
     ctip = cost_tip(cost)
     if ctip:
-        title += " ｜ " + ctip
+        title += "\n" + ctip
+    title += "\n" + ("\n".join(parts) if parts else "没有客户端在跑")
     if cost_over(cost):
-        title += " · 成本超线"
+        title += "\n成本超线"
     if not ok:
-        title += " · 守护异常"
+        title += "\n守护异常"
     if inj and inj["level"] != "ok":
-        title += " · " + inj["text"]
+        title += "\n" + inj["text"]
     return {"bars": bars, "title": title, "rows": rows, "daemon": (ok, msg, tasks),
             "inject": inj, "cost": cost, "cost_over": cost_over(cost)}
 
@@ -605,6 +659,25 @@ def make_busy_icon():
 
 
 # ── 弹窗：详细状态 ───────────────────────────────────────────────────
+# ── 等宽对齐用的小工具（2026-11-12）────────────────────────────────
+def disp_width(s):
+    """按**显示宽度**算：中文/全角算 2 格，ASCII 算 1 格。
+
+    状态窗是 Consolas 等宽字体，但中文仍占两格；直接 len() 补空格会让"从未"比"OK"宽一格，
+    第三列就跟着歪。要按格子算才对齐。
+    """
+    import unicodedata
+    n = 0
+    for ch in str(s):
+        n += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return n
+
+
+def pad_cells(s, cells):
+    s = str(s)
+    return s + " " * max(0, cells - disp_width(s))
+
+
 def detail_text(s):
     out = [s["title"], ""]
     inj = s.get("inject")
@@ -617,56 +690,82 @@ def detail_text(s):
         out.append("【成本】今日 in %s · out %s · cache_read %s · cache_write %s"
                    % (_cost_tokens(t.get("uncached")), _cost_tokens(t.get("output")),
                       _cost_tokens(t.get("cache_read")), _cost_tokens(t.get("cache_write"))))
-        if cost.get("priced"):
-            line = "  %s（日线 %s%s）" % (
+        # 2026-11-12 人报「还有两处显示金额」：今日金额已经在标题第二行报过，
+        # 这里平时不再重复；只有超线时才补一句，否则只列 token 与"单价未配置"这类状态。
+        if cost.get("priced") and (cost.get("over_daily") or cost.get("over_hourly")):
+            hour = cost.get("hour") or {}
+            out.append("  超线：日 %s（线 %s%s）· 近 1 小时 %s%s" % (
                 _cost_money(cost.get("money"), cost.get("currency")),
                 _cost_money(cost.get("daily_warn"), cost.get("currency")),
-                "，已超线" if cost.get("over_daily") else "")
-            hour = cost.get("hour") or {}
-            line += " · 近 1 小时 %s%s" % (
+                "，已超日线" if cost.get("over_daily") else "",
                 _cost_money(hour.get("money"), cost.get("currency")),
-                "，已超小时线" if cost.get("over_hourly") else "")
-        else:
-            line = "  单价未配置（%s）→ 只报 token、不判金额" % (
-                cost.get("price_error") or "per_mtok 四个单价有 null")
-        out.append(line)
-        out.append("")
-    out.append("【客户端】")
-    if s["rows"]:
-        for r in s["rows"]:
-            if r["ctx"] is not None:
-                wm = "%s / %s%s" % (human(r["ctx"]), human_win(r["max"]),
-                                    r.get("note") or "")
-            elif r.get("wm"):
-                wm = "? / %s%s" % (human_win(r["max"]),
-                                   r.get("note") or " 读数不可用")
-            else:
-                wm = "无水位源"
-            out.append("  %s %-8s %-18s %s" % ("●" if r["alive"] else "○", r["name"], wm,
-                                               ("%d 进程" % r["procs"]) if r["procs"] else ""))
-    else:
-        out.append("  （没检测到已知客户端）")
+                "，已超小时线" if cost.get("over_hourly") else ""))
+        elif not cost.get("priced"):
+            out.append("  单价未配置（%s）→ 只报 token、不判金额" % (
+                cost.get("price_error") or "per_mtok 四个单价有 null"))
+    # 【客户端】那段删了（2026-11-12）：标题里已经"每个客户端一行"，
+    # 再来一段同样的清单就是重复；进程数已并进标题那一行。
+
     ok, msg, tasks = s["daemon"]
     out.append("")
-    out.append("【守护】%s" % msg)
+    out.append("【守护】%s" % _short(msg, 60))
+    fails = [(k, v) for k, v in tasks.items()
+             if v.get("ok") is False and k not in BENIGN_FAIL]
+    # 2026-11-12：状态窗现在是 **Consolas 等宽**（persona_status_dialog.py），
+    # 所以用空格补齐就能真正对齐；tab 在等宽下反而依赖制表位设置，不如空格确定。
+    for k, v in fails[:4]:
+        out.append("✗ %s  %s" % (pad_cells(k, 8), _short(v.get("msg"), 56)))
     for name in ("hctx", "export", "index", "backup2", "todo", "proxy", "cost"):
         t = tasks.get(name)
         if not t:
             continue
-        out.append("  %-8s %s  %s" % (name, "OK " if t.get("ok") else "FAIL",
-                                      (t.get("msg") or "")[:46]))
+        o = t.get("ok")
+        state = "OK" if o is True else ("FAIL" if o is False else "待跑")
+        body = t.get("msg") or ""
+        if body == "never":
+            state, body = "从未", "（还没跑过，或一直在等上一轮）"
+        if name == "cost":
+            # 金额只在第二行报一次（2026-11-12 人报「还有两处显示金额」）；
+            # 这里那行是任务自己的读数，会跟上面重复且数字略旧，压成一句状态。
+            body = "（今日已记账）"
+        out.append("%s %s  %s" % (pad_cells(name, 8), pad_cells(state, 4), _short(body, 44)))
     return "\n".join(out)
 
 
 
+_DLG_LOCK = None          # 同一个标题只开一个框（2026-11-11 人报"单击重复弹窗"）
+_DLG_AT = {}
+
+
 def _dialog(text, title):
-    """独立线程弹框：托盘线程的消息泵不能被占住。"""
+    """独立线程弹框：托盘线程的消息泵不能被占住。
+
+    2026-11-11 修的：原来每点一次就开一个 MessageBox（左键默认项就是「状态」），
+    连点几下就叠一摞同样的窗。现在同标题只留一个：已开着就把它提到前面，不再新开。
+    """
     import threading
+    import time as _t
     import ctypes
+
+    global _DLG_LOCK
+    if _DLG_LOCK is None:
+        _DLG_LOCK = threading.Lock()
+
+    u32 = ctypes.windll.user32
+    # 已经有一个同标题的框：拉前台，别开第二个
+    hwnd = u32.FindWindowW(None, title)
+    if hwnd:
+        u32.ShowWindow(hwnd, 5)
+        u32.SetForegroundWindow(hwnd)
+        return
+    now = _t.time()
+    if now - _DLG_AT.get(title, 0) < 1.0:      # 一秒内的连点直接吞掉
+        return
+    _DLG_AT[title] = now
 
     def run():
         try:
-            ctypes.windll.user32.MessageBoxW(0, text, title, 0x40 | 0x40000)
+            u32.MessageBoxW(0, text, title, 0x40 | 0x40000)
         except Exception:
             print(text)
 
@@ -674,14 +773,34 @@ def _dialog(text, title):
 
 
 def show_status(icon=None, item=None):
-    """原生 MessageBox。
+    """状态窗：**等宽字体**的独立小窗（不再用 MessageBox）。
 
-    2026-11-10 踩坑：tkinter 的 messagebox 在 pythonw 里会**卡死**——窗口出来但
-    点「确定」和「×」都没反应（Tk 根窗口被 withdraw 后模态循环收不到消息）。
-    改用 Win32 的 MessageBoxW：MB_ICONINFORMATION | MB_TOPMOST，一定能关。
+    2026-11-12 人报「能用 tab 把格式对齐下吗」——MessageBox 是比例字体 + 固定制表位，
+    名字长短一差，整行的列就跳位，怎么调都对不齐（实测截图确认）。
+    所以改由 `persona_status_dialog.py` 单独起一个进程画窗口：Consolas 等宽、能选中复制、
+    Esc / 右上角都能关。跟「密码窗」同一个套路（托盘线程里建 tk 窗会关不掉，2026-11-11 踩过）。
     """
     text = detail_text(snapshot())
-    _dialog(text, "SysPersona 状态")
+    try:
+        path = os.path.join(OPS, "_status-text.txt")
+        with io.open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+    except OSError as e:
+        _dialog(text, "SysPersona 状态")       # 兜底：写不了文件就退回老弹窗
+        _p("状态窗正文写不进去（%s），退回 MessageBox" % e)
+        return
+    py = sys.executable
+    pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
+    exe = pyw if os.path.exists(pyw) else py
+    try:
+        subprocess.Popen([exe, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                            "persona_status_dialog.py"),
+                          path, "SysPersona 状态"],
+                         cwd=ROOT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:                 # noqa: BLE001
+        _dialog(text, "SysPersona 状态")
+        _p("状态窗起不来（%s），退回 MessageBox" % e)
 
 
 def open_log(icon=None, item=None):
@@ -692,8 +811,10 @@ def open_log(icon=None, item=None):
 
 
 def open_mem(icon=None, item=None):
+    r"""菜单「打开会话存档」：开**本地会话保存**目录（sessions\<日期>\），不是记忆库。"""
+    target = os.path.join(ROOT, "sessions")
     try:
-        os.startfile(ROOT)
+        os.startfile(target if os.path.isdir(target) else ROOT)
     except Exception:
         pass
 
@@ -731,8 +852,8 @@ def refresh(icon):
 
 
 def retry_inject(icon=None, item=None):
-    """菜单「立即重试一次注入」：只跑探针（选窗+抢焦点），不真发内容。"""
-    script = os.path.join(ROOT, "persona_inject.py")
+    """菜单「重读设定文件」：只跑探针（选窗+抢焦点），不真发内容。"""
+    script = os.path.join(ROOT, "脚本/persona_inject.py")
     try:
         r = subprocess.run([PY, script, "--probe"], cwd=ROOT, capture_output=True,
                            text=True, timeout=40, encoding="utf-8", errors="replace",
@@ -740,24 +861,64 @@ def retry_inject(icon=None, item=None):
         msg = ((r.stdout or "") + (r.stderr or "")).strip() or ("exit %d" % r.returncode)
     except Exception as e:
         msg = "探针失败：%s" % e
-    _dialog(msg[:800], "立即重试一次注入（只探测，不发内容）")
+    _dialog(msg[:800], "重读设定文件（只探测，不发内容）")
 
 
 # ── 菜单「立即压缩一次」（2026-11-10 加）────────────────────────────
-CONFIRM_COMPACT = ("立即压缩一次？\n\n"
+CONFIRM_COMPACT = ("立即压缩上下文？\n\n"
                    "会先把当前会话原文导出、镜像并校验 sha256，再等壳空闲后注入 /compact。\n"
                    "可能需要一两分钟，期间别打字、别切窗口（会抢一次前台焦点）。\n"
                    "镜像失败就不压。继续吗？")
 
 
-def _confirm(text, title="SysPersona"):
-    """原生「是/否」框：和 _dialog 一样走 Win32（tkinter 在 pythonw 下会卡死）。"""
-    import ctypes
+def _note(action, extra=""):
+    """把"点了什么、走到哪一步"记一行（ops/tray-actions.jsonl）。
+
+    2026-11-11 15:47 人报「deep 的压缩还是点确定没反应」：
+    界面上什么都没发生，日志里也什么都没留，等于摸黑。
+    从此每个手动动作**进门先记一笔**，卡住就能看出是没进来、还是确认框返回了假。
+    """
     try:
-        flags = 0x04 | 0x20 | 0x40000 | 0x10000      # YESNO|QUESTION|TOPMOST|SETFOREGROUND
-        return ctypes.windll.user32.MessageBoxW(0, text, title, flags) == 6   # IDYES
-    except Exception:
-        return False
+        rec = {"at": time.strftime("%Y-%m-%d %H:%M:%S"), "action": action,
+               "extra": str(extra)[:200], "pid": os.getpid()}
+        if OPS and os.path.isdir(OPS):
+            with open(os.path.join(OPS, "tray-actions.jsonl"), "a",
+                      encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:                      # noqa: BLE001
+        pass
+
+
+def _confirm(text, title="SysPersona", timeout=180):
+    """原生「是/否」框：走 Win32，但**在独立线程里弹**。
+
+    2026-11-11 15:47 修的：原来直接在 pystray 的菜单回调线程里调 MessageBoxW，
+    托盘自己的消息泵被这个模态循环挡着，表现就是「点了确定没反应」。
+    现在照 `_dialog` 的做法另起线程，主线程用 Event 等结果（等不到就当"否"，绝不卡死）。
+    另外 6=是、1=确定 都算同意：不同 Windows 版本/按钮文字不一样，不跟它较劲。
+    """
+    import threading
+
+    box = {}
+    ev = threading.Event()
+
+    def run():
+        try:
+            import ctypes
+            flags = 0x04 | 0x20 | 0x40000 | 0x10000   # YESNO|QUESTION|TOPMOST|SETFOREGROUND
+            box["r"] = ctypes.windll.user32.MessageBoxW(0, text, title, flags)
+        except Exception as e:             # noqa: BLE001
+            box["err"] = str(e)[:80]
+            box["r"] = 0
+        finally:
+            ev.set()
+
+    threading.Thread(target=run, daemon=True).start()
+    got = ev.wait(timeout)
+    _note("confirm", "%s → r=%s%s%s" % (title, box.get("r"),
+                                        "" if got else "（超时）",
+                                        (" err=" + box["err"]) if box.get("err") else ""))
+    return box.get("r") in (6, 1)
 
 
 def _fail_reason(out, rc):
@@ -780,15 +941,54 @@ def _fail_reason(out, rc):
     return "exit %d" % rc
 
 
+PROGRESS = os.path.join(ROOT, "脚本/persona_progress.py")
+
+
+def run_with_progress(title, worker, countdown=8):
+    """开一个进度窗 → 后台跑 worker() -> (ok, msg) → 把结果写给窗口。
+
+    人 2026-11-11 定：所有压缩/重启都按这个来，**只有检测到成功才自动关**，
+    失败必须人看完再点关闭。
+    """
+    import json
+    import uuid
+    rid = uuid.uuid4().hex[:8]
+    flag = os.path.join(OPS, "progress-%s.json" % rid)
+    try:
+        if os.path.exists(flag):
+            os.remove(flag)
+    except OSError:
+        pass
+    try:
+        subprocess.Popen([PY, PROGRESS, flag, title, str(countdown)],
+                         cwd=ROOT, creationflags=NO_WINDOW)
+    except Exception:
+        pass
+
+    def run():
+        ok, msg = False, "没跑起来"
+        try:
+            ok, msg = worker()
+        except Exception as e:             # noqa: BLE001
+            ok, msg = False, str(e)[:300]
+        try:
+            with open(flag, "w", encoding="utf-8") as f:
+                json.dump({"ok": bool(ok), "msg": str(msg)[:800]}, f, ensure_ascii=False)
+        except OSError:
+            pass
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _compress_worker(ask=True, extra=()):
     """真正干活的那层：确认 → 子进程 `check --force`（不阻塞托盘）。
 
     图标/提示由 refresh 循环按 `_BUSY` 画：执行中整块黄 + 「正在压缩…」，
     完成恢复；失败把原因留在 tooltip（`BUSY_KEEP` 秒）。
     """
-    def run():
-        if ask and not _confirm(CONFIRM_COMPACT, "SysPersona · 立即压缩一次"):
-            return
+    PROGRESS = os.path.join(ROOT, "脚本/persona_progress.py")
+
+    def work():
         set_busy(True)
         try:
             env = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -800,20 +1000,27 @@ def _compress_worker(ask=True, extra=()):
             out = ((r.stdout or "") + (r.stderr or "")).strip()
             with _LOCK:
                 _LAST_COMPRESS["rc"], _LAST_COMPRESS["out"] = r.returncode, out
-            if r.returncode == 0 and ("OK " in out or "DRY" in out):
-                set_busy(False)                 # 成功：立刻恢复常规图标/提示
-            else:
-                set_busy(False, "压缩失败：" + _fail_reason(out, r.returncode))
+            ok = r.returncode == 0 and ("OK " in out or "DRY" in out)
+            if ok:
+                set_busy(False)
+                return True, "压缩完成\n\n" + (out[-600:] or "（无输出）")
+            why = _fail_reason(out, r.returncode)
+            set_busy(False, "压缩失败：" + why)
+            return False, "压缩失败：%s\n\n%s" % (why, out[-600:])
         except subprocess.TimeoutExpired:
             set_busy(False, "压缩失败：超时（15 分钟没结束）")
+            return False, "超时：15 分钟没结束"
         except Exception as e:
             set_busy(False, "压缩失败：%s" % str(e)[:60])
+            return False, "压缩失败：%s" % str(e)[:200]
 
-    threading.Thread(target=run, daemon=True).start()
+    if ask and not _confirm(CONFIRM_COMPACT, "SysPersona · 立即压缩上下文"):
+        return
+    run_with_progress("压缩上下文", work, countdown=8)
 
 
 def compress_once(icon=None, item=None):
-    """菜单「立即压缩一次」的回调入口。
+    """菜单「立即压缩上下文」的回调入口。
 
     pystray 只接受 0/1/2 个参数的回调，参数超过 2 个会抛 `ValueError(action)`
     （2026-11-10 踩：`compress_once(icon, item, ask, extra)` 四参 → 托盘启动即崩、
@@ -825,7 +1032,7 @@ def compress_once(icon=None, item=None):
 
 # ── 任务池：托盘 ↔ 分身 的唯一通道（只走 ops/tasks.jsonl）────────────
 TASKS = os.path.join(OPS, "tasks.jsonl")
-TODO_PY = os.path.join(ROOT, "persona_tasks.py")
+TODO_PY = os.path.join(ROOT, "脚本/persona_tasks.py")
 
 
 def _task_rows():
@@ -917,13 +1124,13 @@ def submit_task(icon=None, item=None):
 def _menu_items():
     """托盘菜单的唯一出处：main 建菜单、--probe/--status 打印菜单项都读它。"""
     return [
-        ("状态", show_status, True),
-        ("立即压缩一次", compress_once, False),
-        ("立即重试一次注入", retry_inject, False),
+        ("状态", show_status, True),    # 左键默认项＝状态；连点已由 _dialog 去重挡掉
+        ("立即压缩上下文", compress_once, False),
+        ("重读设定文件（重新注入交接卡）", retry_inject, False),
         ("任务池（只读）", show_pool, False),
         ("派一条…", submit_task, False),
         ("打开日志", open_log, False),
-        ("打开记忆库", open_mem, False),
+        ("打开会话存档（本地会话保存）", open_mem, False),
         (None, None, False),                     # 分隔线
         ("退出托盘", quit_app, False),
     ]
@@ -1015,6 +1222,12 @@ def main():
     if "--probe-cost" in sys.argv:
         _probe_cost()
         return
+    if "--single" not in sys.argv:
+        try:                                   # 一个进程、多个图标（2026-11-11 人定的）
+            import persona_tray_multi as _M
+            return _M.run_all(sys.modules[__name__])
+        except Exception as _e:                # noqa: BLE001
+            sys.stderr and sys.stderr.write("多图标起不来，退回单图标：%s\n" % _e)
     s = snapshot()
     icon = pystray.Icon(
         "SysPersona",
@@ -1027,4 +1240,5 @@ def main():
 
 
 if __name__ == "__main__":
+    _pio.setup_stdio()  # 管道捕获时别因 ⚠ 炸掉（v6.13.0）
     main()
