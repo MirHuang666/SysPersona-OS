@@ -1,4 +1,4 @@
-# 发布规则
+﻿# 发布规则
 
 > **SysPersona-OS** · 本文件定义：发版规矩：什么算一个版本、四段式、撤回规则、三处同步
 > 规范全文以仓库 `main` 为准；改了要同步 README / CHANGELOG / 台账。
@@ -193,3 +193,27 @@
 
 反例（本规则就是被它逼出来的）：2026-11-09 一天之内为「重试上限」「保活只报不拉」各切一版
 （v5.3.1 / v5.3.2），四十分钟后又全部并回 v5.3.0。**第一次就该并进去。**
+## 十、推送排障（2026-11-16 实测）
+
+git push 报 Recv failure: Connection was reset / Failed to connect to github.com:443 时，
+**先别断定是网络坏了**。人 2026-11-16 观察到的规律：
+
+- **浏览器里开着 GitHub 页面时，推送经常被重置；把网页关掉再推，往往就成功**；
+- 这台机器的 443 是**时通时断**，所以推送要写成"重试到成功"，不能拿一次失败当结论。
+
+推荐做法：
+
+`powershell
+for ($i=1; $i -le 5; $i++) {
+  git -c http.version=HTTP/1.1 fetch origin      # HTTP/2 更容易被重置
+  if ($LASTEXITCODE -eq 0) {
+    git rebase origin/main
+    git -c http.version=HTTP/1.1 push origin HEAD:main
+    if ($LASTEXITCODE -eq 0) { break }
+  }
+  Start-Sleep -Seconds 6
+}
+`
+
+两条经验：**① 用 http.version=HTTP/1.1；② 推之前顺手关掉浏览器里的 GitHub 标签页。**
+"网络不可用"只在连续多次、且 curl -I https://github.com 也失败时才成立。
