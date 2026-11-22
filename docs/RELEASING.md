@@ -201,3 +201,28 @@
 3. 确认代码段头写明来源（例：`index.js` 的 C 段、I 段）；
 4. 新增吸收项若许可证是 GPL/AGPL/「禁止衍生」/**没有许可证** → **先停下来问人**，不要先写代码；
 5. 一条硬规则：**没有许可证的代码不吸收**（默认保留所有权利），吸收了就不能发布。
+
+## 十、推送排障（2026-11-16 实测）
+
+git push 报 Recv failure: Connection was reset / Failed to connect to github.com:443 时，
+**先别断定是网络坏了**。人 2026-11-16 观察到的规律：
+
+- **浏览器里开着 GitHub 页面时，推送经常被重置；把网页关掉再推，往往就成功**；
+- 这台机器的 443 是**时通时断**，所以推送要写成"重试到成功"，不能拿一次失败当结论。
+
+推荐做法：
+
+`powershell
+for ($i=1; $i -le 5; $i++) {
+  git -c http.version=HTTP/1.1 fetch origin      # HTTP/2 更容易被重置
+  if ($LASTEXITCODE -eq 0) {
+    git rebase origin/main
+    git -c http.version=HTTP/1.1 push origin HEAD:main
+    if ($LASTEXITCODE -eq 0) { break }
+  }
+  Start-Sleep -Seconds 6
+}
+`
+
+两条经验：**① 用 http.version=HTTP/1.1；② 推之前顺手关掉浏览器里的 GitHub 标签页。**
+"网络不可用"只在连续多次、且 curl -I https://github.com 也失败时才成立。

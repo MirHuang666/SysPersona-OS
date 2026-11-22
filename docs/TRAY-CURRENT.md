@@ -88,3 +88,7 @@
 - 托盘自身版本：`persona_tray_version.py` 读取本机 `applied-rev.json` 与全局 `配置\版本.json`；
 - 版本逻辑与库一致：全局只读、本机跟随、**只有人在用的那台能 `publish`**；
 - 本页与 `tools/tray/` 的代码同步于 **2026-11-16 20:3x**（`persona_tray_multi.py` 3988 行 / 198 KB）。
+
+## 五、要恢复托盘时怎么做（幂等）
+
+```powershell
